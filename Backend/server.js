@@ -16,72 +16,79 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 // Connect to the database
 connectDB();
 
+// CORS Configuration
+const corsOptions = {
+    origin: 'http://localhost:4000',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+    optionsSuccessStatus: 200
+};
+
 // Middleware
-app.use(cors());
-app.use(express.json());
+app.use(cors(corsOptions));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// Increase header size limit
+const http = require('http');
+const httpServer = http.createServer({
+    maxHeaderSize: 81920, // 80KB
+}, app);
 
 // Routes
-// app.get('/', (req, res) => {
-//     res.send('Hello World!');
-// });
-
 app.use('/api/user', userRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/message', messageRoutes);
 
 // --------------------------Deployment------------------------------
-
 const __dirname1 = path.resolve();
 
 if (process.env.NODE_ENV === "production") {
     app.use(express.static(path.join(__dirname1, "/frontend/build")));
-
     app.get("*", (req, res) =>
         res.sendFile(path.resolve(__dirname1, "frontend", "build", "index.html"))
     );
 } else {
     app.get("/", (req, res) => {
-        res.send("API is running..");
+        res.send("API is running on port 5000");
     });
 }
-
 // --------------------------Deployment------------------------------
-
-
 
 // Error handling middleware
 app.use(notFound);
 app.use(errorHandler);
 
-const port = process.env.PORT || 5000;
+const port = 5000;
 
+// Start the server
 const startServer = async () => {
     let currentPort = port;
     let maxAttempts = 10;
-    let server;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
-            server = await new Promise((resolve, reject) => {
-                const srv = app.listen(currentPort, () => resolve(srv))
-                    .on('error', (err) => {
-                        if (err.code === 'EADDRINUSE') {
-                            console.log(`Port ${currentPort} is in use, trying ${currentPort + 1}...`.yellow);
-                            currentPort++;
-                            reject(err);
-                        } else {
-                            reject(err);
-                        }
-                    });
+            const server = await new Promise((resolve, reject) => {
+                const srv = httpServer.listen(currentPort, '0.0.0.0', () => {
+                    console.log(`Server is running at port ${currentPort}`.yellow.bold);
+                    resolve(srv);
+                }).on('error', (err) => {
+                    if (err.code === 'EADDRINUSE') {
+                        console.log(`Port ${currentPort} is in use, trying ${currentPort + 1}...`.yellow);
+                        currentPort++;
+                        reject(err);
+                    } else {
+                        reject(err);
+                    }
+                });
             });
-            console.log(`Server is running at port ${currentPort}`.yellow.bold);
             return server;
         } catch (err) {
             if (attempt === maxAttempts) {
                 console.error(`Could not find an available port after ${maxAttempts} attempts`.red);
                 process.exit(1);
             }
-            // Continue to next iteration to try next port
         }
     }
 };

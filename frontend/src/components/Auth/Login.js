@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FormControl, FormLabel, Input, InputGroup, InputRightElement, VStack } from '@chakra-ui/react';
 import { Button, useToast } from '@chakra-ui/react';
 import axios from 'axios';
 import { useHistory } from 'react-router-dom';
+import { ChatState } from '../../Context/ChatProvider';
 
 const Login = () => {
   const [show, setShow] = useState(false);
@@ -11,6 +12,7 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const toast = useToast();
   const history = useHistory();
+  const { setUser } = ChatState();
 
   const handleClick = () => setShow(!show);
 
@@ -36,10 +38,13 @@ const Login = () => {
       };
 
       const { data } = await axios.post(
-        '/api/user/login', 
+        'http://localhost:5000/api/user/login', 
         { email, password },
-        config
+        { withCredentials: true, ...config }
       );
+
+      // Update user in context (which will also update localStorage)
+      setUser(data);
 
       toast({
         title: "Login Successful",
@@ -49,10 +54,8 @@ const Login = () => {
         position: "bottom",
       });
 
-      localStorage.setItem('userInfo', JSON.stringify(data));
       setLoading(false);
-      // history.push('/chats'); // Ensure the route exists or update accordingly
-      history.push('/');
+      history.push('/chats');
 
     } catch (error) {
       console.error('Login error:', error);
@@ -114,31 +117,48 @@ const Login = () => {
         onClick={async () => {
           try {
             setLoading(true);
-            const config = {
+            
+            // Clear all cookies
+            document.cookie.split(';').forEach(c => {
+              const cookie = c.trim();
+              const eqPos = cookie.indexOf('=');
+              const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+              document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+            });
+            
+            // Clear all local storage and session storage
+            localStorage.clear();
+            sessionStorage.clear();
+            
+            // Use the dedicated guest login endpoint
+            const response = await fetch('http://localhost:5000/api/user/guest-login', {
+              method: 'POST',
               headers: {
-                "Content-type": "application/json"
-              }
-            };
-
-            const { data } = await axios.post(
-              '/api/user/login',
-              { 
-                email: 'guest@example.com', 
-                password: '123456'
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
               },
-              config
-            );
+              credentials: 'same-origin' // Only send same-origin cookies
+            });
+            
+            if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.message || 'Failed to login as guest');
+            }
+            
+            const data = await response.json();
+            
+            // Update user in context and localStorage
+            setUser(data);
 
             toast({
-              title: "Login Successful",
+              title: "Guest Login Successful",
               status: "success",
               duration: 5000,
               isClosable: true,
               position: "bottom",
             });
 
-            localStorage.setItem('userInfo', JSON.stringify(data));
-            history.push('/');
+            history.push('/chats');
           } catch (error) {
             toast({
               title: "Error Logging in as Guest",

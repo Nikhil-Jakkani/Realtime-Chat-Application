@@ -38,16 +38,21 @@ const registerUser = asyncHandler(async (req, res) => {
 
 
 // Create guest user if it doesn't exist
+const bcrypt = require('bcryptjs');
 const createGuestUser = async () => {
     try {
         const guestEmail = "guest@example.com";
         let guestUser = await User.findOne({ email: guestEmail });
 
         if (!guestUser) {
+            // Hash the password before creating the user
+            const salt = await bcrypt.genSalt(10);
+            const hashedPassword = await bcrypt.hash("123456", salt);
+            
             guestUser = await User.create({
                 name: "Guest User",
                 email: guestEmail,
-                password: "123456",
+                password: hashedPassword, // Use the hashed password
                 pic: "https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg"
             });
             console.log("Guest user created successfully");
@@ -68,12 +73,23 @@ const authUser = asyncHandler(async (req, res) => {
             throw new Error("Please provide both email and password");
         }
 
+        let user;
+        
         // If it's a guest login attempt, ensure guest user exists
         if (email === "guest@example.com") {
-            await createGuestUser();
+            user = await createGuestUser();
+            // For guest user, we'll bypass password check
+            return res.json({
+                _id: user._id,
+                name: user.name,
+                email: user.email,
+                pic: user.pic,
+                token: generateToken(user._id)
+            });
         }
 
-        const user = await User.findOne({ email });
+        // Regular user login flow
+        user = await User.findOne({ email });
         
         if (!user) {
             res.status(401);
@@ -88,7 +104,7 @@ const authUser = asyncHandler(async (req, res) => {
         }
 
         res.json({
-            _id: user.id,
+            _id: user._id,
             name: user.name,
             email: user.email,
             pic: user.pic,
@@ -117,4 +133,27 @@ const allUsers = asyncHandler(async (req, res) => {
 
 
 
-module.exports = { registerUser, authUser, allUsers };
+// Guest login controller
+const guestLogin = asyncHandler(async (req, res) => {
+    try {
+        // Create or get guest user
+        const guestUser = await createGuestUser();
+        
+        // Generate token
+        const token = generateToken(guestUser._id);
+        
+        // Send response
+        res.json({
+            _id: guestUser._id,
+            name: guestUser.name,
+            email: guestUser.email,
+            pic: guestUser.pic,
+            token: token
+        });
+    } catch (error) {
+        console.error('Guest login error:', error);
+        res.status(500).json({ message: 'Error processing guest login' });
+    }
+});
+
+module.exports = { registerUser, authUser, allUsers, guestLogin };
